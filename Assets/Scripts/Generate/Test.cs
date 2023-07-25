@@ -30,8 +30,9 @@ public class Test : MonoBehaviour
     void Start()
     {
         _command = new CommandBuffer();
-        _texture = new Texture2D(64, 64, TextureFormat.RGBA32, false);
+        _texture = new Texture2D(2, 2, TextureFormat.R8, false);
         _texture.wrapMode = TextureWrapMode.Clamp;
+        _texture.filterMode = FilterMode.Point;
 
         // Set the texture to the renderer with using a property block.
         var prop = new MaterialPropertyBlock();
@@ -55,6 +56,6 @@ public class Test : MonoBehaviour
         _command.Clear();
 
         // Rotation
-        transform.eulerAngles = new Vector3(10, 20, 30) * Time.time;
+        // transform.eulerAngles = new Vector3(10, 20, 30) * Time.time;
     }
 }

@@ -408,7 +408,7 @@ namespace UnityVolumeRendering
         [MenuItem("Volume Rendering/Settings")]
         private static void ShowSettingsWindow()
         {
-            ImportSettingsEditorWindow.ShowWindow();
+            // ImportSettingsEditorWindow.ShowWindow();
         }
     }
 }

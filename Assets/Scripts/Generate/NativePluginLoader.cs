@@ -131,6 +131,14 @@ namespace fts
     [System.Serializable]
     public class NativePluginLoader : MonoBehaviour, ISerializationCallbackReceiver
     {
+        // Binding for the 
+        [System.Runtime.InteropServices.DllImport("PluginBinder")]
+        private static extern ulong GetUnityInterfacePtr();
+        // Unity plugin load/unload delegate
+        private delegate void ManualUnityPluginLoadDelegate(ulong interfacePtr);
+        private delegate void UnityPluginUnLoadDelegate();
+        private static string ManualUnityPluginLoadFuncName = "ManualUnityPluginLoad";
+        private static string UnityPluginUnload = "UnityPluginUnload";
         // Static fields
         static NativePluginLoader _singleton;
 
@@ -180,6 +188,16 @@ namespace fts
             Debug.Log($"NativePluginLoader.UnloadAll, _loadedPlugins.Length: {_loadedPlugins.Count}");
             foreach (var kvp in _loadedPlugins) {
                 Debug.Log($"NativePluginLoader.UnloadAll, key: {kvp.Key}, value: {kvp.Value}");
+                // 调用UnityPluginUnload
+                var fnPtr = SystemLibrary.GetAddress(kvp.Value, UnityPluginUnload);
+                Debug.Log($"NativePluginLoader.UnloadAll, UnityPluginUnLoad func ptr: {fnPtr}");
+                if (fnPtr != IntPtr.Zero)
+                {
+                    var unityPluginUnload = Marshal.GetDelegateForFunctionPointer(fnPtr, typeof(UnityPluginUnLoadDelegate)) as UnityPluginUnLoadDelegate;
+                    Debug.Log($"NativePluginLoader.UnloadAll, unityPluginUnload: {unityPluginUnload}");
+                    if (null != unityPluginUnload) unityPluginUnload();
+                    else Debug.LogWarning($"NativePluginLoader.UnloadAll, {kvp.Key} UnityPluginUnLoad not called.");
+                }
                 SystemLibrary.FreeLib(kvp.Value);
             }
             _loadedPlugins.Clear();
@@ -190,6 +208,12 @@ namespace fts
         void LoadAll() {
             // TODO: Could loop over just Assembly-CSharp.dll in most cases?
 
+            ulong interfacePtr = GetUnityInterfacePtr();
+            Debug.Log($"NativePluginLoader.LoadAll, interfacePtr: {interfacePtr}");
+            if (interfacePtr == 0)
+            {
+                throw new System.Exception("Failed to GetUnityInterfacePtr");
+            }
             // Loop over all assemblies
             var assemblies = AppDomain.CurrentDomain.GetAssemblies();
             foreach (var assembly in assemblies) {
@@ -199,7 +223,7 @@ namespace fts
                     var typeAttributes = type.GetCustomAttributes(typeof(PluginAttr), true);
                     if (typeAttributes.Length > 0)
                     {
-                        Debug.Log($"NativePluginLoader.LoadAll, type: {type}, typeAttributes.Length: {typeAttributes.Length}");
+                        Debug.Log($"NativePluginLoader.LoadAll, type: {type}");
                         Debug.Assert(typeAttributes.Length == 1); // should not be possible
 
                         var typeAttribute = typeAttributes[0] as PluginAttr;
@@ -211,8 +235,18 @@ namespace fts
                             pluginHandle = SystemLibrary.LoadLib(pluginPath);
                             if (pluginHandle == IntPtr.Zero)
                                 throw new System.Exception("Failed to load plugin [" + pluginPath + "]");
-                            Debug.Log($"NativePluginLoader.LoadAll, Add loaded plugin name: {pluginName}, handle: {pluginHandle}");
+                            Debug.Log($"NativePluginLoader.LoadAll, Add loaded plugin name: {pluginName}, pluginPath: {pluginPath}, handle: {pluginHandle}");
                             _loadedPlugins.Add(pluginName, pluginHandle);
+
+                            // 调用ManualUnityPluginLoad，因为这种方式不会自动调用UnityPluginLoad
+                            var fnPtr = SystemLibrary.GetAddress(pluginHandle, ManualUnityPluginLoadFuncName);
+                            Debug.Log($"NativePluginLoader.LoadAll, ManualUnityPluginLoad func ptr: {fnPtr}");
+                            if (fnPtr != IntPtr.Zero)
+                            {
+                                var _manualUnityPluginLoad = Marshal.GetDelegateForFunctionPointer(fnPtr, typeof(ManualUnityPluginLoadDelegate)) as ManualUnityPluginLoadDelegate;
+                                Debug.Log($"NativePluginLoader.LoadAll, _manualUnityPluginLoad: {_manualUnityPluginLoad}");
+                                if (null != _manualUnityPluginLoad) _manualUnityPluginLoad(interfacePtr);
+                            }
                         }
                         // Loop over fields in type
                         var fields = type.GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
